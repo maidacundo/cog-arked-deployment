@@ -36,7 +36,7 @@ class Predictor(BasePredictor):
         unet = pipe.unet
         lora_unet_target_modules={"CrossAttention", "Attention", "GEGLU"}
         lora_dropout_p = 0.1
-        lora_rank = 16
+        lora_rank = 8
         lora_scale = 1.0
         unet_lora_params, unet_lora_params_names = inject_trainable_lora(
             unet,
@@ -46,7 +46,7 @@ class Predictor(BasePredictor):
             scale=lora_scale,
             loras=LORA_FILENAME,
         )
-        
+
         pipe.unet = unet
         self.pipe = pipe.to("cuda")
 
