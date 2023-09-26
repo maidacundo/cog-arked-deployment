@@ -4,84 +4,149 @@ import os
 import math
 import torch
 from PIL import Image
-from diffusers import AutoencoderKL, StableDiffusionInpaintPipeline
+from diffusers import (
+    AutoencoderKL, 
+    StableDiffusionInpaintPipeline,
+    PNDMScheduler,
+    LMSDiscreteScheduler,
+    DDIMScheduler,
+    EulerDiscreteScheduler,
+    EulerAncestralDiscreteScheduler,
+    DPMSolverMultistepScheduler,
+)
 
-MODEL_FILENAME = "Realistic_Vision_V5.1-inpainting.safetensors"
+from lora import inject_trainable_lora
+
 MODEL_CACHE = "./checkpoints"
+MODEL_FILENAME = "Realistic_Vision_V5.1-inpainting.safetensors"
 VAE_FILENAME = "vae-ft-mse-840000-ema-pruned.safetensors"
+LORA_FILENAME = "lora_inpainting_0.pt"
 
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            CACHE,
+            MODEL_CACHE,
             torch_dtype=torch.float16,
             use_safetensors=True,
             variant="fp16",
         )
+
+        print('Injecting LORA...')
+        unet = pipe.unet
+        lora_unet_target_modules={"CrossAttention", "Attention", "GEGLU"}
+        lora_dropout_p = 0.1
+        lora_rank = 16
+        lora_scale = 1.0
+        unet_lora_params, unet_lora_params_names = inject_trainable_lora(
+            unet,
+            r=lora_rank,
+            target_replace_module=lora_unet_target_modules,
+            dropout_p=lora_dropout_p,
+            scale=lora_scale,
+            loras=LORA_FILENAME,
+        )
+        
+        pipe.unet = unet
         self.pipe = pipe.to("cuda")
 
-    def scale_down_image(self, image_path, max_size):
-        #Open the Image
-        image = Image.open(image_path)
-        #Get the Original width and height
-        width, height = image.size
-        # Calculate the scaling factor to fit the image within the max_size
-        scaling_factor = min(max_size/width, max_size/height)
-        # Calaculate the new width and height
-        new_width = int(width * scaling_factor)
-        new_height = int(height * scaling_factor)
-        #resize the image
-        resized_image = image.resize((new_width, new_height))
-        cropped_image = self.crop_center(resized_image)
-        return cropped_image
-
-    def crop_center(self, pil_img):
-        img_width, img_height = pil_img.size
-        crop_width = self.base(img_width)
-        crop_height = self.base(img_height)
-        return pil_img.crop(
-                (
-                    (img_width - crop_width) // 2,
-                    (img_height - crop_height) // 2,
-                    (img_width + crop_width) // 2,
-                    (img_height + crop_height) // 2)
-                )
-
-    def base(self, x):
-        return int(8 * math.floor(int(x)/8))
-
+    @torch.inference_mode()
     def predict(
         self,
-        image: Path = Input(description="Input image"),
-        prompt: str = "a tabby cat, high resolution, sitting on a park bench",
-        mask: Path = Input(description="Mask image"),
-        negative_prompt: str = "(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck",
-        strength: float = Input(description="strength/weight", ge=0, le=1, default=0.8),
-        steps: int = Input(description=" num_inference_steps", ge=0, le=100, default=20),
-        seed: int = Input(description="Leave blank to randomize",  default=None),
-    ) -> Path:
+        prompt: str = Input(
+            description="Input prompt",
+            default="a photo of an astronaut riding a horse on mars",
+        ),
+        negative_prompt: str = Input(
+            description="Specify things to not see in the output",
+            default=None,
+        ),
+        width: int = Input(
+            description="Width of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
+            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
+            default=768,
+        ),
+        height: int = Input(
+            description="Height of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
+            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
+            default=768,
+        ),
+        num_outputs: int = Input(
+            description="Number of images to output.",
+            ge=1,
+            le=4,
+            default=1,
+        ),
+        num_inference_steps: int = Input(
+            description="Number of denoising steps", ge=1, le=500, default=50
+        ),
+        guidance_scale: float = Input(
+            description="Scale for classifier-free guidance", ge=1, le=20, default=7.5
+        ),
+        scheduler: str = Input(
+            default="DPMSolverMultistep",
+            choices=[
+                "DDIM",
+                "K_EULER",
+                "DPMSolverMultistep",
+                "K_EULER_ANCESTRAL",
+                "PNDM",
+                "KLMS",
+            ],
+            description="Choose a scheduler.",
+        ),
+        seed: int = Input(
+            description="Random seed. Leave blank to randomize the seed", default=None
+        ),
+    ) -> List[Path]:
         """Run a single prediction on the model"""
-        if (seed == 0) or (seed == None):
-            seed = int.from_bytes(os.urandom(2), byteorder='big')
-        generator = torch.Generator('cuda').manual_seed(seed)
-        print("Using seed:", seed)
+        if seed is None:
+            seed = int.from_bytes(os.urandom(2), "big")
+        print(f"Using seed: {seed}")
 
-        r_image = self.scale_down_image(image,1280)
-        r_mask = self.scale_down_image(mask, 1280)
-        width, height = r_image.size
-        image = self.pipe(
-            prompt=prompt,
-            image=r_image,
-            mask_image=r_mask,
-            strength=strength,
+        if width * height > 786432:
+            raise ValueError(
+                "Maximum size is 1024x768 or 768x1024 pixels, because of memory limits. Please select a lower width or height."
+            )
+
+        self.pipe.scheduler = make_scheduler(scheduler, self.pipe.scheduler.config)
+
+        generator = torch.Generator("cuda").manual_seed(seed)
+        output = self.pipe(
+            prompt=[prompt] * num_outputs if prompt is not None else None,
+            negative_prompt=[negative_prompt] * num_outputs
+            if negative_prompt is not None
+            else None,
             width=width,
             height=height,
-            negative_prompt=negative_prompt,
-            num_inference_steps=steps,
+            guidance_scale=guidance_scale,
             generator=generator,
-        ).images[0]
+            num_inference_steps=num_inference_steps,
+        )
 
-        out_path = Path(f"/tmp/output.png")
-        image.save(out_path)
-        return out_path
+        output_paths = []
+        for i, sample in enumerate(output.images):
+            if output.nsfw_content_detected and output.nsfw_content_detected[i]:
+                continue
+
+            output_path = f"/tmp/out-{i}.png"
+            sample.save(output_path)
+            output_paths.append(Path(output_path))
+
+        if len(output_paths) == 0:
+            raise Exception(
+                f"NSFW content detected. Try running it again, or try a different prompt."
+            )
+
+        return output_paths
+
+
+def make_scheduler(name, config):
+    return {
+        "PNDM": PNDMScheduler.from_config(config),
+        "KLMS": LMSDiscreteScheduler.from_config(config),
+        "DDIM": DDIMScheduler.from_config(config),
+        "K_EULER": EulerDiscreteScheduler.from_config(config),
+        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
+        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
+    }[name]
