@@ -1,6 +1,7 @@
 # Prediction interface for Cog ⚙️
 from cog import BasePredictor, Input, Path
 import os
+from typing import List
 import math
 import torch
 from PIL import Image

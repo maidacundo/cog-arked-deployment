@@ -4,7 +4,7 @@ This is an implementation of inpainting using the model [Realistic Vision V5.1](
 
 First, download the pre-trained weights:
 
-    cog run script/download-weights
+    cog run script/download-weights.py
 
 Then, you can run predictions:
 
