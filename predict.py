@@ -44,7 +44,7 @@ class Predictor(BasePredictor):
             target_replace_module=lora_unet_target_modules,
             dropout_p=lora_dropout_p,
             scale=lora_scale,
-            loras=LORA_FILENAME,
+            loras=MODEL_CACHE + '/' + LORA_FILENAME,
         )
 
         pipe.unet = unet
