@@ -14,10 +14,10 @@ class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         vae = AutoencoderKL.from_single_file(
-            checkpoints + VAE_FILENAME,
+            CACHE + VAE_FILENAME,
         )
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            checkpoints + MODEL_FILENAME,
+            CACHE + MODEL_FILENAME,
             vae=vae,
         )
         self.pipe = pipe.to("cuda")
