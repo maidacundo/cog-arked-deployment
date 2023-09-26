@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+
+# Run this before you deploy it on replicate
+import os
+import sys
+import torch
+from diffusers import AutoencoderKL, StableDiffusionImg2ImgPipeline
+from huggingface_hub import hf_hub_download
+
+# append project directory to path so predict.py can be imported
+sys.path.append('.')
+from predict import MODEL_NAME, MODEL_CACHE, VAE_FILENAME, VAE_CACHE
+
+# Make cache folders
+if not os.path.exists(MODEL_CACHE):
+    os.makedirs(MODEL_CACHE)
+
+if not os.path.exists(VAE_CACHE):
+    os.makedirs(VAE_CACHE)
+
+realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_NAME, local_dir=MODEL_CACHE)
+vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME, local_dir=VAE_CACHE)
