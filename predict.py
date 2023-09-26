@@ -7,19 +7,17 @@ from PIL import Image
 from diffusers import AutoencoderKL, StableDiffusionInpaintPipeline
 
 MODEL_FILENAME = "Realistic_Vision_V5.1-inpainting.safetensors"
-MODEL_CACHE = "cache"
-VAE_CACHE = "vae-cache"
+CACHE = "./checkpoints/"
 VAE_FILENAME = "vae-ft-mse-840000-ema-pruned.safetensors"
 
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         vae = AutoencoderKL.from_single_file(
-            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
-            cache_dir=VAE_CACHE
+            checkpoints + VAE_FILENAME,
         )
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            MODEL_CACHE,
+            checkpoints + MODEL_FILENAME,
             vae=vae,
         )
         self.pipe = pipe.to("cuda")

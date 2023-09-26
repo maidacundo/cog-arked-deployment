@@ -9,29 +9,11 @@ from huggingface_hub import hf_hub_download
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
-from predict import MODEL_FILENAME, MODEL_CACHE, VAE_FILENAME, VAE_CACHE
+from predict import MODEL_FILENAME, VAE_FILENAME, CACHE
 
 # Make cache folders
-if not os.path.exists(MODEL_CACHE):
-    os.makedirs(MODEL_CACHE)
+if not os.path.exists(CACHE):
+    os.makedirs(CACHE)
 
-if not os.path.exists(VAE_CACHE):
-    os.makedirs(VAE_CACHE)
-
-realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_FILENAME, local_dir=MODEL_CACHE)
-vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME, local_dir=VAE_CACHE)
-
-vae = AutoencoderKL.from_single_file(
-    vae_path,
-    cache_dir=VAE_CACHE
-)
-
-pipe = StableDiffusionInpaintPipeline.from_single_file(
-    realisticVision_path,
-    vae=vae,
-)
-
-print('realisticVision_path:', realisticVision_path)
-print('vae_path:', vae_path)
-
-pipe.save_pretrained(MODEL_CACHE, safe_serialization=True)
+realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_FILENAME, local_dir=CACHE)
+vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME, local_dir=CACHE)
