@@ -13,7 +13,6 @@ from safetensors.torch import safe_open
 from safetensors.torch import save_file as safe_save
 safetensors_available = True
 
-
 class LoraInjectedLinear(nn.Module):
     def __init__(
         self, in_features, out_features, bias=False, r=4, dropout_p=0.1, scale=1.0
@@ -35,11 +34,11 @@ class LoraInjectedLinear(nn.Module):
         nn.init.normal_(self.lora_down.weight, std=1 / r)
         nn.init.zeros_(self.lora_up.weight)
 
-    def forward(self, input, scale):
+    def forward(self, input, scale=1):
         return (
             self.linear(input)
             + self.dropout(self.lora_up(self.selector(self.lora_down(input))))
-            * scale
+            * self.scale
         )
 
     def realize_as_lora(self):
