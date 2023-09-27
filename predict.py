@@ -167,7 +167,7 @@ class Predictor(BasePredictor):
             "height": height,
         }
         
-        pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
+        self.pipe.scheduler = SCHEDULERS[scheduler].from_config(self.pipe.scheduler.config)
         generator = torch.Generator("cuda").manual_seed(seed)
 
         if loras is not None:
