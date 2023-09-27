@@ -171,7 +171,7 @@ class Predictor(BasePredictor):
 
         if loras is not None:
             self.add_lora(loras)
-        else if self.current_lora is not None:
+        elif self.current_lora is not None:
             self.remove_lora(self.current_lora)
 
         output = self.pipe(
