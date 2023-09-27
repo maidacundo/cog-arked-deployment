@@ -14,6 +14,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
     DPMSolverMultistepScheduler,
+    HeunDiscreteScheduler,
 )
 
 from lora import inject_trainable_lora, monkeypatch_or_replace_lora, monkeypatch_remove_lora
