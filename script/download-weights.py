@@ -9,7 +9,7 @@ from huggingface_hub import hf_hub_download
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
-from predict import MODEL_FILENAME, VAE_FILENAME, MODEL_CACHE, LORA_FILENAME
+from predict import MODEL_FILENAME, VAE_FILENAME, LORA_FILENAME, MODEL_CACHE
 
 # Make cache folders
 if not os.path.exists(MODEL_CACHE):

@@ -19,6 +19,7 @@ from diffusers import (
 from lora import inject_trainable_lora
 
 MODEL_CACHE = "./checkpoints"
+
 MODEL_FILENAME = "Realistic_Vision_V5.1-inpainting.safetensors"
 VAE_FILENAME = "vae-ft-mse-840000-ema-pruned.safetensors"
 LORA_FILENAME = "lora_inpainting_0.pt"
@@ -52,6 +53,7 @@ class Predictor(BasePredictor):
         self.pipe = pipe.to("cuda")
 
     @torch.inference_mode()
+    @torch.cuda.amp.autocast()
     def predict(
         self,
         prompt: str = Input(
@@ -60,41 +62,25 @@ class Predictor(BasePredictor):
         ),
         negative_prompt: str = Input(
             description="Specify things to not see in the output",
-            default=None,
+            default=None
         ),
-        width: int = Input(
-            description="Width of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
-            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
-            default=768,
+        image: Path = Input(
+            description="Inital image to generate variations of. Supproting images size with 512x512",
         ),
-        height: int = Input(
-            description="Height of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
-            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
-            default=768,
+        mask: Path = Input(
+            description="Black and white image to use as mask for inpainting over the image provided. White pixels are inpainted and black pixels are preserved",
         ),
         num_outputs: int = Input(
-            description="Number of images to output.",
+            description="Number of images to output. Higher number of outputs may OOM.",
             ge=1,
-            le=4,
+            le=8,
             default=1,
         ),
         num_inference_steps: int = Input(
-            description="Number of denoising steps", ge=1, le=500, default=50
+            description="Number of denoising steps", ge=1, le=500, default=25
         ),
         guidance_scale: float = Input(
             description="Scale for classifier-free guidance", ge=1, le=20, default=7.5
-        ),
-        scheduler: str = Input(
-            default="DPMSolverMultistep",
-            choices=[
-                "DDIM",
-                "K_EULER",
-                "DPMSolverMultistep",
-                "K_EULER_ANCESTRAL",
-                "PNDM",
-                "KLMS",
-            ],
-            description="Choose a scheduler.",
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
@@ -105,49 +91,29 @@ class Predictor(BasePredictor):
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
 
-        if width * height > 786432:
-            raise ValueError(
-                "Maximum size is 1024x768 or 768x1024 pixels, because of memory limits. Please select a lower width or height."
-            )
-
-        self.pipe.scheduler = make_scheduler(scheduler, self.pipe.scheduler.config)
+        image = Image.open(image).convert("RGB").resize((512, 512))
+        extra_kwargs = {
+            "mask_image": Image.open(mask).convert("RGB").resize(image.size),
+            "image": image
+        }
 
         generator = torch.Generator("cuda").manual_seed(seed)
+
         output = self.pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
             negative_prompt=[negative_prompt] * num_outputs
             if negative_prompt is not None
             else None,
-            width=width,
-            height=height,
             guidance_scale=guidance_scale,
             generator=generator,
             num_inference_steps=num_inference_steps,
+            **extra_kwargs,
         )
 
         output_paths = []
         for i, sample in enumerate(output.images):
-            if output.nsfw_content_detected and output.nsfw_content_detected[i]:
-                continue
-
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
             output_paths.append(Path(output_path))
 
-        if len(output_paths) == 0:
-            raise Exception(
-                f"NSFW content detected. Try running it again, or try a different prompt."
-            )
-
         return output_paths
-
-
-def make_scheduler(name, config):
-    return {
-        "PNDM": PNDMScheduler.from_config(config),
-        "KLMS": LMSDiscreteScheduler.from_config(config),
-        "DDIM": DDIMScheduler.from_config(config),
-        "K_EULER": EulerDiscreteScheduler.from_config(config),
-        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
-        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
-    }[name]
