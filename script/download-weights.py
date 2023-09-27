@@ -19,6 +19,9 @@ realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_n
 vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME)
 lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=LORA_FILENAME, local_dir=MODEL_CACHE)
 
+print('realisticVision_path:', realisticVision_path)
+print('vae_path:', vae_path)
+
 # Load the model into memory to make running multiple predictions efficient
 vae = AutoencoderKL.from_single_file(
     vae_path,

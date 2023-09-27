@@ -112,7 +112,7 @@ class LoraInjectedConv2d(nn.Module):
         nn.init.normal_(self.lora_down.weight, std=1 / r)
         nn.init.zeros_(self.lora_up.weight)
 
-    def forward(self, input):
+    def forward(self, input, scale):
         return (
             self.conv(input)
             + self.dropout(self.lora_up(self.selector(self.lora_down(input))))
