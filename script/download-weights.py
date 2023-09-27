@@ -17,7 +17,11 @@ if not os.path.exists(MODEL_CACHE):
 
 realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_FILENAME)
 vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME)
-lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=LORA_FILENAME, local_dir=MODEL_CACHE)
+
+lora_paths = []
+for lora_name in LORA_FILENAME:
+    lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=lora_name, local_dir=MODEL_CACHE)
+    print(f'lora_path:', lora_path)
 
 print('realisticVision_path:', realisticVision_path)
 print('vae_path:', vae_path)
