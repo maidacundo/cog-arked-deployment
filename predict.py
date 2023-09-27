@@ -48,13 +48,13 @@ LORA_DICT = {
         "rank": 8,
         "scale": 1.0,
         "target_replace_module": {"CrossAttention", "Attention", "GEGLU"},
-        "filename": "lora_white_wall.pt",
+        "filename": LORA_FILENAMES[0],
     },
     "brick_wall": {
         "rank": 8,
         "scale": 1.0,
         "target_replace_module": {"CrossAttention", "Attention", "GEGLU"},
-        "filename": "lora_brick_wall.pt",
+        "filename": LORA_FILENAMES[1],
     },
 }
 

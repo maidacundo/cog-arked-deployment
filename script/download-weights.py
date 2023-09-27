@@ -9,7 +9,7 @@ from huggingface_hub import hf_hub_download
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
-from predict import MODEL_FILENAME, VAE_FILENAME, LORA_FILENAME, MODEL_CACHE
+from predict import MODEL_FILENAME, VAE_FILENAME, LORA_FILENAMES, MODEL_CACHE
 
 # Make cache folders
 if not os.path.exists(MODEL_CACHE):
@@ -19,7 +19,7 @@ realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_n
 vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME)
 
 lora_paths = []
-for lora_name in LORA_FILENAME:
+for lora_name in LORA_FILENAMES:
     lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=lora_name, local_dir=MODEL_CACHE)
     print(f'lora_path:', lora_path)
 
