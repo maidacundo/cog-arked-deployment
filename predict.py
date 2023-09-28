@@ -3,6 +3,8 @@ from cog import BasePredictor, Input, Path
 import os
 from typing import List
 import time
+import datetime
+
 import torch
 from PIL import Image
 from diffusers import (
@@ -18,7 +20,6 @@ from diffusers import (
 )
 
 from lora import inject_trainable_lora, monkeypatch_or_replace_lora, monkeypatch_remove_lora
-
 
 class KarrasDPM:
     def from_config(config):
@@ -61,29 +62,26 @@ LORA_DICT = {
 class Predictor(BasePredictor):
 
     def add_lora(self, lora_name):
-        if self.current_lora != lora_name:
-            print('Replacing LoRA with', lora_name)
-            start = time.time()
-            monkeypatch_or_replace_lora(
-                model=self.pipe.unet,
-                loras=self.loras[lora_name].copy(),
-                target_replace_module=LORA_DICT[lora_name]["target_replace_module"],
-                r=LORA_DICT[lora_name]["rank"],
-            )
-            self.current_lora = lora_name
-            end = time.time()
-            print('Done in', start - end, 'seconds')
+        print('Replacing LoRA with', lora_name)
+        start = time.time()
+        monkeypatch_or_replace_lora(
+            model=self.pipe.unet,
+            loras=self.loras[lora_name].copy(),
+            target_replace_module=LORA_DICT[lora_name]["target_replace_module"],
+            r=LORA_DICT[lora_name]["rank"],
+        )
+        self.current_lora = lora_name
+        print('Done in', "{:.2f}".format(time.time() - start), 'seconds')
 
-    def remove_lora(self, lora_name):
+    def remove_lora(self):
         print('Removing LoRA')
         start = time.time()
         monkeypatch_remove_lora(
             model=self.pipe.unet,
         )
-        end = time.time()
         self.current_lora = None
-        print('Done in', start - end, 'seconds')
-
+        print('Done in', "{:.2f}".format(time.time() - start), 'seconds')
+        
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -98,7 +96,6 @@ class Predictor(BasePredictor):
             lora_path = os.path.join(MODEL_CACHE, LORA_DICT[lora_name]["filename"])
             self.loras[lora_name] = torch.load(lora_path) # to decide if we need to load it to cpu or gpu
         self.current_lora = None
-
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -139,7 +136,7 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
-        loras: str = Input(
+        lora: str = Input(
             description="LoRA to use for the model",
             choices=LORA_DICT.keys(),
             default=None,
@@ -170,11 +167,18 @@ class Predictor(BasePredictor):
         self.pipe.scheduler = SCHEDULERS[scheduler].from_config(self.pipe.scheduler.config)
         generator = torch.Generator("cuda").manual_seed(seed)
 
-        if loras is not None:
-            self.add_lora(loras)
-        elif self.current_lora is not None:
-            self.remove_lora(self.current_lora)
+        # add lora if needed
+        if lora is not None and lora != self.current_lora:
+            self.add_lora(lora)
+        elif lora is None and self.current_lora is not None:
+            self.remove_lora()
 
+        print()
+        print('Current date and time', datetime.datetime.now())
+        print('self.current_lora:', self.current_lora if self.current_lora is not None else 'None')
+        print('Running inference with LoRA:', lora if lora is not None else 'None')
+        print()
+        
         output = self.pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
             negative_prompt=[negative_prompt] * num_outputs

@@ -15,12 +15,16 @@ from predict import MODEL_FILENAME, VAE_FILENAME, LORA_FILENAMES, MODEL_CACHE
 if not os.path.exists(MODEL_CACHE):
     os.makedirs(MODEL_CACHE)
 
-realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_FILENAME, cache_dir='../../.cache/')
-vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME, cache_dir='../../.cache/')
+if not os.path.exists('./.cache'):
+    print('Creating cache folder')
+    os.makedirs('./.cache')
+
+realisticVision_path = hf_hub_download(repo_id="SG161222/Realistic_Vision_V5.1_noVAE", filename=MODEL_FILENAME, cache_dir='./.cache')
+vae_path = hf_hub_download(repo_id="stabilityai/sd-vae-ft-mse-original", filename=VAE_FILENAME, cache_dir='./.cache')
 
 lora_paths = []
 for lora_name in LORA_FILENAMES:
-    lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=lora_name, local_dir=MODEL_CACHE, cache_dir='../../.cache/')
+    lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=lora_name, local_dir=MODEL_CACHE, cache_dir='./.cache')
     print(f'lora_path:', lora_path)
 
 print('realisticVision_path:', realisticVision_path)
