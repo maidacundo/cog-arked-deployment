@@ -27,8 +27,11 @@ for lora_name in LORA_FILENAMES:
     lora_path = hf_hub_download(repo_id="maidacundo/lora-arked-facades", filename=lora_name, local_dir=MODEL_CACHE, cache_dir='./.cache')
     print(f'lora_path:', lora_path)
 
+controlnet_canny = hf_hub_download(repo_id="lllyasviel/sd-controlnet-canny", filename="diffusion_pytorch_model.safetensors", cache_dir=MODEL_CACHE)
+
 print('realisticVision_path:', realisticVision_path)
 print('vae_path:', vae_path)
+print('controlnet_canny:', controlnet_canny)
 
 # Load the model into memory to make running multiple predictions efficient
 vae = AutoencoderKL.from_single_file(
