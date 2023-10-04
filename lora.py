@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.models.lora import LoRACompatibleLinear
+
 from safetensors.torch import safe_open
 from safetensors.torch import save_file as safe_save
 safetensors_available = True
@@ -802,7 +804,7 @@ def monkeypatch_remove_lora(model):
             _source = _child_module.linear
             weight, bias = _source.weight, _source.bias
 
-            _tmp = nn.Linear(
+            _tmp = LoRACompatibleLinear(
                 _source.in_features, _source.out_features, bias is not None
             )
 

@@ -16,6 +16,7 @@ build:
     - "omegaconf"
     - "opencv-python"
     - "numpy"
+    - "xformers"
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
