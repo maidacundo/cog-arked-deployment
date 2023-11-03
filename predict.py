@@ -48,7 +48,7 @@ CONTROLNETS = {
     "canny": "lllyasviel/sd-controlnet-canny",
 }
 
-MAX_SIZE = 768
+MAX_SIZE = 1024
 
 MODEL_CACHE = "./checkpoints"
 
@@ -160,6 +160,18 @@ class Predictor(BasePredictor):
         image: Path = Input(
             description="Inital image to generate variations of. Supproting images size with 512x512",
         ),
+        width: int = Input(
+            description="Width of the image to generate. Should be multiple of 8",
+            ge=8,
+            le=MAX_SIZE,
+            default=512,
+        ),
+        height: int = Input(
+            description="Height of the image to generate. Should be multiple of 8",
+            ge=8,
+            le=MAX_SIZE,
+            default=512,
+        ),
         mask: Path = Input(
             description="Black and white image to use as mask for inpainting over the image provided. White pixels are inpainted and black pixels are preserved",
         ),
@@ -218,12 +230,14 @@ class Predictor(BasePredictor):
         image = Image.open(image).convert("RGB")
         mask = Image.open(mask).convert("L")
 
-        width, height = image.size
-
+        """
         if width % 8 != 0 or height % 8 != 0:
             if mask.size == image.size:
                 mask = crop(mask)
             image = crop(image)
+
+        width, height = image.size
+        """
 
         extra_kwargs = {
             "image": image,
