@@ -5,6 +5,7 @@ from typing import List
 import time
 import datetime
 import re
+import math
 
 import torch
 from PIL import Image
@@ -26,7 +27,8 @@ from diffusers import (
 from diffusers.utils.import_utils import is_xformers_available
 
 from lora import inject_trainable_lora, monkeypatch_or_replace_lora, monkeypatch_remove_lora
-from controlnet_processing import apply_canny
+from image_processing import apply_canny, crop
+
 class KarrasDPM:
     def from_config(config):
         return DPMSolverMultistepScheduler.from_config(config, use_karras_sigmas=True)
@@ -136,11 +138,6 @@ class Predictor(BasePredictor):
         self.pipe.enable_model_cpu_offload()
         self.pipe_canny.enable_model_cpu_offload()
         
-        if is_xformers_available():
-            # enable memory efficient attention (xformers)
-            self.pipe.enable_xformers_memory_efficient_attention()
-            self.pipe_canny.enable_xformers_memory_efficient_attention()
-        
         self.current_lora = {
             'original': None,
             'canny': None,
@@ -223,6 +220,11 @@ class Predictor(BasePredictor):
 
         width, height = image.size
 
+        if width % 8 != 0 or height % 8 != 0:
+            if mask.size == image.size:
+                mask = crop(mask)
+            image = crop(image)
+
         extra_kwargs = {
             "image": image,
             "mask_image": mask,
@@ -239,6 +241,7 @@ class Predictor(BasePredictor):
             """
             control_image = apply_canny(image, low_threshold=100, high_threshold=200)
             extra_kwargs['control_image'] = control_image
+            strength = 1.0
             pipe = self.pipe_canny 
         else:
             pipe = self.pipe
@@ -259,7 +262,7 @@ class Predictor(BasePredictor):
         print('self.current_lora:', self.current_lora[pipe_name] if self.current_lora[pipe_name] is not None else 'None')
         print()
 
-        output = self.pipe_canny(
+        output = pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
             negative_prompt=[negative_prompt] * num_outputs
             if negative_prompt is not None
@@ -278,3 +281,5 @@ class Predictor(BasePredictor):
             output_paths.append(Path(output_path))
 
         return output_paths
+    
+
