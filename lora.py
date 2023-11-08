@@ -1095,3 +1095,83 @@ def save_all(
                 embeds[tok] = learned_embeds.detach().cpu()
 
         save_safeloras_with_embeds(loras, embeds, save_path)
+
+def extract_lora_tensor(
+    model,
+    target_replace_module=DEFAULT_TARGET_REPLACE,
+    as_fp16=True,
+    prefix="lora_te",
+):
+    """
+    Extracts lora tensors from a model and returns them as a dictionary of weights
+    """
+    loras_dict = {}
+
+    for name, module in model.named_modules():
+        if module.__class__.__name__ in target_replace_module:
+            for child_name, child_module in module.named_modules():
+                if child_module.__class__.__name__ == "LoraInjectedLinear" or (
+                    child_module.__class__.__name__ == "LoraInjectedConv2d"
+                    and child_module.kernel_size == (1, 1)
+                ):
+                    lora_name = prefix + "." + name + "." + child_name
+                    lora_name = lora_name.replace(".", "_")
+                    up, down = child_module.realize_as_lora()
+                    alpha = torch.tensor(up.shape[1])
+                    if as_fp16:
+                        up = up.to(torch.float16)
+                        down = down.to(torch.float16)
+                        alpha = alpha.to(torch.float16)
+                    loras_dict[lora_name + ".lora_up.weight"] = up
+                    loras_dict[lora_name + ".lora_down.weight"] = down
+                    loras_dict[lora_name + ".alpha"] = alpha
+
+    if len(loras_dict) == 0:
+        raise ValueError("No lora injected.")
+
+    return loras_dict
+
+
+def save_safeloras_for_webui(
+    modelmap: Dict[str, Tuple[nn.Module, Set[str]]] = {},
+    embeds: Dict[str, torch.Tensor] = {},
+    outpath="./lora.safetensors",
+):
+    """
+    Saves the Lora for A1111 from multiple modules in a single safetensor file.
+    Reference from @tengshaofeng
+
+    modelmap is a dictionary of {
+        "module name": (module, target_replace_module)
+    }
+    """
+
+    weights = {}
+    metadata = {}
+
+    for name, (model, target_replace_module) in modelmap.items():
+        metadata[name] = json.dumps(list(target_replace_module))
+        if name == "unet":
+            weights_tmp = extract_lora_tensor(
+                model, target_replace_module, prefix="lora_unet"
+            )
+        else:
+            weights_tmp = extract_lora_tensor(
+                model, target_replace_module, prefix="lora_te"
+            )
+        weights.update(weights_tmp)
+
+    metadata_embeds = {}
+    weights_embeds = {}
+    for token, tensor in embeds.items():
+        metadata_embeds[token] = EMBED_FLAG
+        weights_embeds[token] = tensor
+    # saving the TI embedding to seperate file
+    safe_save(
+        weights_embeds,
+        outpath.replace(".safetensors", "_ti.safetensors"),
+        metadata_embeds,
+    )
+
+    print(f"Saving weights to {outpath}")
+    safe_save(weights, outpath, metadata)

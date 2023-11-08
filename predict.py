@@ -24,8 +24,6 @@ from diffusers import (
     ControlNetModel,
 )
 
-from diffusers.utils.import_utils import is_xformers_available
-
 from lora import inject_trainable_lora, monkeypatch_or_replace_lora, monkeypatch_remove_lora
 from image_processing import apply_canny, crop
 
@@ -75,30 +73,45 @@ LORA_DICT = {
         "target_replace_module": {"CrossAttention", "Attention", "GEGLU"},
         "filename": "lora_brick_wall.pt",
     },
+    "kvist_window": {
+        "rank": 8,
+        "scale": 1,
+        "target_replace_module": {"CrossAttention", "Attention", "GEGLU"},
+        "filename": "kvist_windows_lora_135.safetensors",
+    },
 }
 
 CANNY_TRIGGER_WORDS = ['wall', 'walls', 'facade', 'facades']
+
+WHITE_LORA_TRIGGER_WORDS = ['white_facade']
 
 class Predictor(BasePredictor):
 
     def add_lora(self, lora_name, pipe, pipe_name):
         print('Replacing LoRA with', lora_name)
         start = time.time()
-        monkeypatch_or_replace_lora(
-            model=pipe.unet,
-            loras=self.loras[lora_name].copy(),
-            target_replace_module=LORA_DICT[lora_name]["target_replace_module"],
-            r=LORA_DICT[lora_name]["rank"],
-        )
+        if LORA_DICT[lora_name]["filename"].split('.')[-1] == 'safetensors':
+            lora_path = os.path.join(MODEL_CACHE, LORA_DICT["kvist_window"]["filename"])
+            pipe.load_lora_weights(lora_path)
+        else:
+            monkeypatch_or_replace_lora(
+                model=pipe.unet,
+                loras=self.loras[lora_name].copy(),
+                target_replace_module=LORA_DICT[lora_name]["target_replace_module"],
+                r=LORA_DICT[lora_name]["rank"],
+            )
         self.current_lora[pipe_name] = lora_name
         print('Done in', "{:.2f}".format(time.time() - start), 'seconds')
 
     def remove_lora(self, pipe, pipe_name):
         print('Removing LoRA')
         start = time.time()
-        monkeypatch_remove_lora(
-            model=pipe.unet,
-        )
+        if LORA_DICT[self.current_lora[pipe_name]]["filename"].split('.')[-1] == 'safetensors':
+            pipe.unload_lora_weights()
+        else:
+            monkeypatch_remove_lora(
+                model=pipe.unet,
+            )
         self.current_lora[pipe_name] = None
         print('Done in', "{:.2f}".format(time.time() - start), 'seconds')
         
@@ -115,7 +128,8 @@ class Predictor(BasePredictor):
         self.loras = {}
         for lora_name in LORA_DICT.keys():
             lora_path = os.path.join(MODEL_CACHE, LORA_DICT[lora_name]["filename"])
-            self.loras[lora_name] = torch.load(lora_path) # to decide if we need to load it to cpu or gpu
+            if not lora_path.split('.')[-1] == 'safetensors':
+                self.loras[lora_name] = torch.load(lora_path) # to decide if we need to load it to cpu or gpu
 
         self.lora = None
         print('loading controlnet')
@@ -144,6 +158,11 @@ class Predictor(BasePredictor):
         }
 
         self.canny_pattern = re.compile('|'.join(CANNY_TRIGGER_WORDS))
+        self.white_lora_pattern = re.compile('|'.join(WHITE_LORA_TRIGGER_WORDS))
+
+        # Load negative embeddings to use for negative prompts
+        self.pipe.load_textual_inversion(os.path.join(MODEL_CACHE, 'easynegative.safetensors'))
+        self.pipe_canny.load_textual_inversion(os.path.join(MODEL_CACHE, 'easynegative.safetensors'))
 
     @torch.inference_mode()
     @torch.cuda.amp.autocast()
@@ -196,19 +215,19 @@ class Predictor(BasePredictor):
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
-        lora: str = Input(
-            description="LoRA to use for the model",
-            choices=LORA_DICT.keys(),
-            default=None,
-        ),
         scheduler: str = Input(
             description="scheduler",
             choices=SCHEDULERS.keys(),
             default="K_EULER",
         ),
+        lora: str = Input(
+            description="LoRA to use for the model",
+            choices=LORA_DICT.keys() + ['None'],
+            default=None,
+        ),
         controlnet: str = Input(
             description="What controlnet to use",
-            choices=CONTROLNETS.keys(),
+            choices=CONTROLNETS.keys() + ['None'],
             default=None,
         ),
 
@@ -271,10 +290,23 @@ class Predictor(BasePredictor):
         elif lora is None and self.current_lora[pipe_name] is not None:
             self.remove_lora(pipe, pipe_name)
 
+        if re.search(self.white_lora_pattern, prompt):
+            print('Prompt contains a trigger word for white lora')
+            if self.current_lora[pipe_name] != 'white_wall':
+                self.add_lora('white_wall', pipe, pipe_name)
+
         print()
         print('Current date and time', datetime.datetime.now())
         print('self.current_lora:', self.current_lora[pipe_name] if self.current_lora[pipe_name] is not None else 'None')
         print()
+        pipe.to('cuda')
+
+        # add the negative prompt embedding to the prompt
+        if negative_prompt is not None:
+            negative_prompt = f'easynegative, {negative_prompt}'
+        else:
+            negative_prompt = 'easynegative'
+
 
         output = pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
